@@ -1,107 +1,172 @@
 # Federated Banking Intelligence — MCP POC
 
-Demonstrates an AI agent answering a cross-system banking question by
-calling governed, explicitly-defined MCP-style tools — never a raw
-database connection.
+An AI agent that answers natural-language banking and procurement questions by
+governed, real MCP-protocol tool calls across multiple independent
+systems — never with raw database access.
 
-## What's real vs fake right now
+## What it does
 
-| Domain | Backing today | Notes |
-|---|---|---|
-| Core Banking | fake SQLite (`data/core_banking.db`) | **swap point for SAP** — see `mcp_servers/core_banking/tools.py` header comment |
-| CRM | fake SQLite (`data/crm.db`) | stays fake |
-| Risk / Lending | fake CSV (`data/credit_risk.csv`, `data/loans.csv`) | stays fake |
-| Policy | plain deterministic Python | no LLM involved in the decision |
+Ask a question in plain English — no fixed phrasing required — and the
+system:
+1. Uses an LLM (Azure OpenAI, GPT-4o-mini) to understand the question and
+   route it to the right business domain
+2. Calls a fixed sequence of MCP tools, over the real MCP protocol,
+   across separate systems
+3. Runs the actual decision through a deterministic policy engine (never
+   AI-guessed)
+4. Explains the decision in natural language, strictly grounded in the
+   retrieved evidence
+5. Shows a full execution trace of every tool call made along the way
 
-The orchestrator, policy engine, and frontend never know which source
-is real vs fake — they only see the standard tool response envelope
-(`mcp_servers/common/envelope.py`). That's the whole point of the MCP
-pattern: swapping Core Banking onto real SAP BTP later means editing
-one file (`mcp_servers/core_banking/tools.py`) and nothing else.
+Two business domains are supported out of the box:
+- **Banking customers** — e.g. "Can Sarah Jenkins' fee be waived?"
+- **Vendors / Accounts Payable** — e.g. "Has Alpha Freight Logistics'
+  invoice been matched against their PO?"
 
-## Quick start
+## Architecture
+
+```
+Browser (chat UI)
+      │
+      ▼
+FastAPI (async)
+      │
+      ▼
+LLM intent classification (Azure GPT-4o-mini)  ──fallback──▶ regex classifier
+      │
+      ▼
+Orchestrator (agent/graph.py) — bounded DAG, not an autonomous agent
+      │
+      ▼
+MCP Client (agent/mcp_client.py)
+      │
+      ├──▶ CRM MCP Server        (Postgres, Neon cloud)
+      ├──▶ Core Banking MCP Server (SAP BTP, real deployed service)
+      ├──▶ Risk MCP Server        (local CSV)
+      ├──▶ Policy MCP Server      (deterministic rules)
+      ├──▶ AP MCP Server          (SAP BTP, real deployed service)
+      └──▶ AP Policy MCP Server   (deterministic rules)
+      │
+      ▼
+LLM response composition (Azure GPT-4o-mini) ──fallback──▶ template text
+      │
+      ▼
+Grounded answer + evidence + execution trace
+```
+
+Each MCP server runs as its own separate process, spawned at app
+startup, communicating over the real MCP protocol (stdio transport)
+via the official `mcp` Python SDK — not direct function calls.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI (async), Python 3.12 |
+| MCP protocol | Official `mcp` Python SDK, 6 independent server processes |
+| LLM | Azure OpenAI (GPT-4o-mini) — intent classification + response composition |
+| CRM data | PostgreSQL (Neon, cloud-hosted) |
+| Core Banking data | Real service deployed on SAP BTP (Cloud Foundry), SQLite loaded from CSV |
+| Risk data | Local CSV files |
+| AP/Procurement data | Real service deployed on SAP BTP, SQLite loaded from real SAP table exports (LFA1, EKKO, EKPO, MKPF, MSEG, BKPF, BSEG, SKAT) |
+| Frontend | Single-file HTML/CSS/JS, no framework |
+
+## Setup
 
 ```bash
 python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-python data/seed_data.py          # generates all synthetic data files
-
-uvicorn api.main:app --reload --port 8000
 ```
 
-Then open http://localhost:8000 — the frontend is served directly by
-the backend, no separate frontend server needed.
+### Environment variables
 
-## Run the tests
+Copy `.env.example` to `.env` and fill in real values:
+```
+DATABASE_URL=            # Neon Postgres connection string
+AP_SAP_URL=               # deployed AP MCP service URL on SAP BTP
+CORE_BANKING_SAP_URL=     # deployed Core Banking service URL on SAP BTP
+AZURE_ENDPOINT=           # Azure OpenAI resource endpoint
+AZURE_API_KEY=            # Azure OpenAI API key
+AZURE_API_VERSION=        # e.g. 2024-12-01-preview
+AZURE_DEPLOYMENT=         # e.g. gpt-4o-mini
+```
+
+### Seed synthetic data
 
 ```bash
-pytest tests/test_flow.py -v
+python data/generate_bulk_data.py
 ```
 
-## The 3 demo scenarios (buttons are pre-loaded in the UI)
+Generates ~100 synthetic customers across CRM (Postgres), Risk (CSV),
+and Core Banking (local SQLite + CSV export for SAP deployment).
 
-1. **Federated MCP intelligence** — Sarah Jenkins fee waiver → ELIGIBLE,
-   with a full execution trace across CRM, Core Banking, Risk, and
-   Policy MCP servers.
-2. **Controlled capabilities** — "Change Sarah Jenkins' account balance
-   to ₹10 million" → REQUEST REJECTED, no tool exists for this, the
-   database is never reached.
-3. **Fail-closed grounding** — "Michael Anderson" doesn't exist in any
-   system → UNABLE TO EVALUATE. You can also click **Stop Risk MCP**
-   in the UI, then re-ask the Sarah Jenkins question, to see
-   DECISION NOT AVAILABLE when required evidence is missing.
+### Deploy the SAP-backed services (one-time, or after data changes)
 
-Other seeded customers: Robert Miller (high risk → not eligible),
-Priya Nair (active flag → not eligible), David Wilson (low lifetime
-value → not eligible).
+```bash
+cd sap_service && cf push && cd ..
+cd sap_ap_service && cf push && cd ..
+```
+
+Requires the Cloud Foundry CLI logged into your SAP BTP trial
+(`cf login -a <your-api-endpoint>`).
+
+### Run
+
+```bash
+uvicorn api.main:app --port 8000
+```
+
+Or on Windows, use the provided helper script (also checks/restarts
+the SAP Core Banking service if it's gone idle):
+```powershell
+.\start-sap.ps1
+```
+
+Open `http://localhost:8000`.
 
 ## Project structure
 
 ```
-banking-mcp-poc/
-├── data/                  synthetic data + seed_data.py
-├── mcp_servers/
-│   ├── common/            envelope.py, identity.py (ECID mapping)
-│   ├── core_banking/      SAP swap point lives here
-│   ├── crm/
-│   ├── risk/
-│   └── policy/            deterministic fee-waiver rules
 ├── agent/
-│   ├── state.py           BankingAgentState TypedDict
-│   ├── intent.py          rule-based intent + parameter extraction
-│   └── graph.py           the bounded orchestration DAG
+│   ├── graph.py          bounded orchestration DAG (async MCP client)
+│   ├── intent.py         LLM + regex-fallback intent classification
+│   ├── llm.py             Azure OpenAI wrapper (classification + composition)
+│   ├── mcp_client.py     manages persistent MCP server connections
+│   ├── stats.py           portfolio-wide analytics aggregation
+│   └── state.py
+├── mcp_servers/
+│   ├── crm/               server.py (MCP server) + tools.py (business logic)
+│   ├── core_banking/
+│   ├── risk/
+│   ├── policy/
+│   ├── ap/
+│   └── ap_policy/
+├── sap_service/            deployed to SAP BTP — Core Banking data
+├── sap_ap_service/          deployed to SAP BTP — AP/Procurement data
+├── data/
+│   └── generate_bulk_data.py
 ├── api/
-│   └── main.py            FastAPI app (/api/chat, /api/admin/risk-mcp/*)
-├── frontend/
-│   └── index.html          single-file chat + evidence + trace UI
-└── tests/
-    └── test_flow.py
+│   └── main.py            FastAPI app, MCP server lifecycle management
+└── frontend/
+    └── index.html
 ```
 
-## Next steps (not built yet, by design — see project scope doc)
+## Demo scenarios
 
-- **Real SAP BTP connection** for Core Banking (swap point is marked
-  in code — this is where the "parallel SAP workstream" plugs in).
-  SAP BTP free trial is time-limited to 90 days, so start that clock
-  deliberately, not accidentally.
-- **Real MCP protocol servers**: today each "MCP server" is an
-  in-process Python module using the standard envelope, so the whole
-  thing runs with zero extra infra. To run these as literal MCP
-  protocol servers (stdio/SSE), wrap each `TOOLS` dict in
-  `mcp_servers/*/tools.py` with the official `mcp` Python SDK
-  (`pip install mcp`) — the tool logic itself does not need to change.
-- **LangGraph**: `agent/graph.py` is a hand-rolled version of the
-  bounded DAG described in the architecture doc. It can be
-  re-implemented with the `langgraph` package as a literal
-  `StateGraph` without touching any tool or policy code.
-- **LLM narration**: `agent/graph.py: compose_response()` currently
-  formats the grounded evidence as plain text. Swap in an LLM call
-  here (with the strict response-composer contract from the
-  architecture doc — no facts outside the evidence object) for a more
-  natural explanation.
-- Lightweight authorization (permission YAML), audit/observability
-  logging, and the Architecture Monitor panel are all called out as
-  P1/optional in the architecture doc — add after the core 3 demo
-  scenarios are solid.
+1. **Fee-waiver assessment** — ask about a customer's fee, natural
+   phrasing works (not just "waive")
+2. **Vendor reconciliation** — ask whether a vendor's invoice matches
+   their PO and goods receipt
+3. **Controlled capability rejection** — ask to change an account
+   balance; rejected before any database is touched
+4. **Fail-closed behavior** — ask about an unknown customer, or stop
+   the Risk MCP server mid-demo; system refuses to guess
+
+## Known limitations / next steps
+
+- SAP services hold synthetic data embedded in code/CSV, not a live
+  connection to a production SAP system
+- SAP BTP trial is time-limited (90 days)
+- No persistent audit log beyond the in-memory execution trace
+- No enterprise RBAC/IAM — lightweight demo authorization only
