@@ -1,0 +1,17 @@
+SAKNR,KTOPL,SPRAS,TXT50
+100000,INT,EN,Cash and Cash Equivalents
+110000,INT,EN,Accounts Receivable - Trade
+120000,INT,EN,Inventory - Spare Parts
+150000,INT,EN,Prepaid Expenses
+160000,INT,EN,Fixed Assets - Ground Equipment
+200000,INT,EN,Accounts Payable - Trade
+210000,INT,EN,Accrued Liabilities
+400000,INT,EN,Fuel Expense
+410000,INT,EN,MRO Expense
+420000,INT,EN,Catering Expense
+430000,INT,EN,Ground Handling Expense
+440000,INT,EN,IT & Software Expense
+450000,INT,EN,Facilities Expense
+460000,INT,EN,Freight & Logistics Expense
+470000,INT,EN,Office Supplies Expense
+480000,INT,EN,Safety Equipment Expense

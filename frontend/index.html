@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Federated Banking Intelligence</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --panel-2:#f1f3f8;
+    --border:#e6e9ef; --text:#323338; --text-dim:#676879;
+    --accent:#0073ea; --accent-dark:#0060b9;
+    --ok:#00c875; --warn:#fdab3d; --danger:#e2445c; --purple:#a25ddc;
+    --mono: "SF Mono", "Consolas", monospace;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height:100vh;
+  }
+  header{
+    padding:22px 32px; border-bottom:1px solid var(--border);
+    display:flex; align-items:baseline; gap:12px;
+    background:var(--panel);
+  }
+  header h1{font-size:19px; font-weight:700; margin:0; letter-spacing:0.1px; color:var(--text)}
+  header span{color:var(--text-dim); font-size:13px}
+  .layout{max-width:1400px; margin:0 auto; padding:28px 32px 80px; display:grid; grid-template-columns:1fr 300px; gap:24px; align-items:start}
+  .wrap{min-width:0}
+  .sidebar{position:sticky; top:28px; display:flex; flex-direction:column; gap:16px}
+  .sidebar .card{padding:18px}
+  .sidebar h3{font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-dim); margin:0 0 4px; font-weight:700}
+  .ring-row{display:flex; align-items:center; gap:14px; margin-top:10px}
+  .ring-row:first-of-type{margin-top:14px}
+  .ring-label{flex:1; font-size:13px; color:var(--text); font-weight:600}
+  .ring-sub{font-size:11px; color:var(--text-dim)}
+  .ring-value{font-size:15px; font-weight:700; fill:var(--text)}
+  .mini-bars{margin-top:14px; display:flex; flex-direction:column; gap:8px}
+  .mini-bar-row{display:flex; align-items:center; gap:8px; font-size:12px}
+  .mini-bar-label{width:64px; color:var(--text-dim)}
+  .mini-bar-track{flex:1; height:8px; background:var(--panel-2); border-radius:4px; overflow:hidden}
+  .mini-bar-fill{height:100%; border-radius:4px}
+  .mini-bar-val{width:36px; text-align:right; color:var(--text-dim); font-weight:600}
+  .stats-empty{color:var(--text-dim); font-size:12px}
+  @media (max-width: 900px){ .layout{grid-template-columns:1fr} .sidebar{position:static} }
+  .ask{display:flex; gap:10px}
+  input[type=text]{
+    flex:1; background:var(--panel); border:1.5px solid var(--border);
+    color:var(--text); padding:13px 16px; border-radius:8px; font-size:14px;
+  }
+  input[type=text]:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,115,234,0.12)}
+  button{
+    background:var(--accent); color:#fff; border:none; padding:13px 22px;
+    border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  button:hover{background:var(--accent-dark)}
+  button.ghost{
+    background:var(--panel); border:1.5px solid var(--border); color:var(--text-dim);
+    padding:8px 14px; font-weight:600; font-size:13px;
+  }
+  button.ghost:hover{background:var(--panel-2); color:var(--text)}
+  .admin{margin-top:14px; display:flex; gap:8px; align-items:center}
+  .admin small{color:var(--text-dim); font-weight:600}
+  section{margin-top:28px}
+  h2{font-size:13px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-dim); margin:0 0 12px; font-weight:700}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:22px; box-shadow:var(--shadow)}
+  .status-line{display:flex; align-items:center; gap:10px; margin-bottom:14px}
+  .badge{padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700; letter-spacing:0.3px; color:#fff}
+  .badge.OK{background:var(--ok)}
+  .badge.ELIGIBLE{background:var(--ok)}
+  .badge.MATCHED{background:var(--ok)}
+  .badge.NOT_ELIGIBLE{background:var(--danger)}
+  .badge.SIGNIFICANT_MISMATCH{background:var(--danger)}
+  .badge.OVER_BILLED{background:var(--danger)}
+  .badge.NO_DECISION{background:var(--warn)}
+  .badge.REVIEW_RECOMMENDED{background:var(--warn)}
+  .badge.REJECTED{background:var(--danger)}
+  pre.msg{white-space:pre-wrap; font-family:var(--mono); font-size:14px; line-height:1.7; margin:0; color:var(--text)}
+  table{width:100%; border-collapse:collapse; font-size:15px}
+  td{padding:12px 0; border-bottom:1px solid var(--border); color:var(--text)}
+  td.k{color:var(--text-dim); width:240px; font-weight:600}
+  .trace-step{
+    border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:8px;
+    background:var(--panel-2);
+  }
+  .trace-step summary{
+    display:flex; justify-content:space-between; align-items:center;
+    cursor:pointer; font-size:15px; list-style:revert; font-weight:500;
+  }
+  .trace-step summary::marker{color:var(--text-dim)}
+  .trace-step .tool-name{color:var(--text); font-weight:600; text-transform:capitalize}
+  .trace-step .trace-detail{margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-family:var(--mono); font-size:12.5px}
+  .trace-step .status{font-weight:700; font-size:12px; padding:3px 10px; border-radius:12px; color:#fff}
+  .trace-step .status.SUCCESS{background:var(--ok)}
+  .trace-step .status.FAILURE{background:var(--danger)}
+  .trace-step .io{color:var(--text-dim); margin-top:6px}
+  .empty{color:var(--text-dim); font-size:13px}
+  .loading{color:var(--text-dim); font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Federated Banking Intelligence</h1>
+  <span>MCP-governed cross-system access - demo</span>
+</header>
+
+<div class="layout">
+<div class="wrap">
+  <div class="ask">
+    <input id="query" type="text" placeholder="Ask a banking or vendor question..." value="" />
+    <button onclick="ask()">Analyze</button>
+  </div>
+  <div class="admin">
+    <small>Risk MCP demo control:</small>
+    <button class="ghost" onclick="toggleRisk('stop')">Stop Risk MCP</button>
+    <button class="ghost" onclick="toggleRisk('start')">Start Risk MCP</button>
+    <small id="risk-status"></small>
+  </div>
+
+  <section>
+    <h2>Evidence</h2>
+    <div class="card" id="evidence"><div class="empty">Ask a question to see a grounded, evidence-based result here.</div></div>
+  </section>
+
+  <section>
+    <h2>Execution trace</h2>
+    <div class="card" id="trace"><div class="empty">No MCP calls have been made yet.</div></div>
+  </section>
+</div>
+
+<aside class="sidebar">
+  <div class="card">
+    <h3>Portfolio Overview</h3>
+    <div id="stats-rings"><div class="stats-empty">Loading...</div></div>
+  </div>
+  <div class="card">
+    <h3>Risk Distribution</h3>
+    <div id="risk-bars"><div class="stats-empty">Loading...</div></div>
+  </div>
+  <div class="card">
+    <h3>Customer Tier</h3>
+    <div id="tier-bars"><div class="stats-empty">Loading...</div></div>
+  </div>
+</aside>
+</div>
+
+<script>
+async function toggleRisk(action){
+  const r = await fetch(`/api/admin/risk-mcp/${action}`, {method:'POST'});
+  const data = await r.json();
+  document.getElementById('risk-status').textContent =
+    'Risk MCP: ' + (data.risk_mcp_available ? 'available' : 'unavailable');
+}
+
+async function ask(){
+  const query = document.getElementById('query').value.trim();
+  if(!query) return;
+  document.getElementById('evidence').innerHTML = '<div class="loading">Running MCP orchestration...</div>';
+  document.getElementById('trace').innerHTML = '';
+
+  const res = await fetch('/api/chat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({query})
+  });
+  const data = await res.json();
+  renderEvidence(data);
+  renderTrace(data.trace);
+}
+
+function renderEvidence(data){
+  const evidence = data.evidence;
+  const badgeClass = data.policy_result ? data.policy_result.decision : data.status;
+  const badgeText = data.policy_result ? data.policy_result.decision : data.status;
+
+  let html = `
+    <div class="status-line">
+      <span class="badge ${badgeClass}">${badgeText.replace('_',' ')}</span>
+      <span style="color:var(--text-dim); font-size:12px">intent: ${data.intent || 'n/a'}</span>
+    </div>
+    <pre class="msg">${escapeHtml(data.final_message || '')}</pre>
+  `;
+
+  const inr = v => 'Rs ' + Number(v).toLocaleString('en-IN');
+  const rows = [];
+
+  if(evidence?.crm?.customer_tier) rows.push(['Customer Tier', titleCase(evidence.crm.customer_tier)]);
+  if(evidence?.crm?.lifetime_value !== undefined) rows.push(['Lifetime Value', inr(evidence.crm.lifetime_value)]);
+  if(evidence?.average_balance !== undefined) rows.push(['90-Day Average Balance', inr(evidence.average_balance)]);
+  if(evidence?.risk?.risk_rating) rows.push(['Risk Rating', titleCase(evidence.risk.risk_rating)]);
+  if(evidence?.flags?.active_flag_count !== undefined) rows.push(['Active Flags', evidence.flags.active_flag_count === 0 ? 'None' : evidence.flags.active_flag_count]);
+  if(evidence?.mortgage?.payment_status) rows.push(['Mortgage Status', titleCase(evidence.mortgage.payment_status)]);
+
+  if(evidence?.vendor?.vendor_name) rows.push(['Vendor', evidence.vendor.vendor_name]);
+  if(evidence?.vendor?.purchase_order_count !== undefined) rows.push(['Purchase Orders', evidence.vendor.purchase_order_count]);
+  if(evidence?.vendor?.total_po_value !== undefined) rows.push(['Total PO Value', inr(evidence.vendor.total_po_value)]);
+  if(evidence?.vendor?.total_invoiced !== undefined) rows.push(['Total Invoiced', inr(evidence.vendor.total_invoiced)]);
+  if(evidence?.vendor?.open_items !== undefined) rows.push(['Open Items', evidence.vendor.open_items]);
+
+  if(rows.length > 0){
+    html += '<table>' + rows.map(([k,v]) => `<tr><td class="k">${k}</td><td>${escapeHtml(String(v))}</td></tr>`).join('') + '</table>';
+  }
+
+  document.getElementById('evidence').innerHTML = html;
+}
+
+function titleCase(s){
+  return String(s).toLowerCase().replace(/(^|\s)\w/g, c => c.toUpperCase());
+}
+
+function renderTrace(trace){
+  if(!trace || trace.length === 0){
+    document.getElementById('trace').innerHTML = '<div class="empty">No MCP calls were made.</div>';
+    return;
+  }
+  document.getElementById('trace').innerHTML = trace.map(step => `
+    <details class="trace-step">
+      <summary>
+        <span class="tool-name">${step.tool.replace(/_/g,' ')}</span>
+        <span class="status ${step.status}">${step.status === 'SUCCESS' ? 'Success' : 'Failed'}</span>
+      </summary>
+      <div class="trace-detail">
+        <div class="io">Source: ${step.mcp_server}</div>
+        <div class="io">Checked: ${escapeHtml(JSON.stringify(step.input))}</div>
+        <div class="io">Result: ${escapeHtml(JSON.stringify(step.output_summary))}</div>
+        <div class="io">Time taken: ${step.duration_ms} ms</div>
+        ${step.error ? `<div class="io" style="color:var(--danger)">Note: ${escapeHtml(step.error)}</div>` : ''}
+      </div>
+    </details>
+  `).join('');
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+document.getElementById('query').addEventListener('keydown', e => { if(e.key === 'Enter') ask(); });
+
+function ring(percent, color, label, sub){
+  const r = 30, c = 2 * Math.PI * r;
+  const offset = c * (1 - percent / 100);
+  return `
+    <div class="ring-row">
+      <svg width="70" height="70" viewBox="0 0 70 70">
+        <circle cx="35" cy="35" r="${r}" fill="none" stroke="var(--panel-2)" stroke-width="7"/>
+        <circle cx="35" cy="35" r="${r}" fill="none" stroke="${color}" stroke-width="7"
+          stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"
+          transform="rotate(-90 35 35)"/>
+        <text x="35" y="39" text-anchor="middle" class="ring-value">${percent}%</text>
+      </svg>
+      <div>
+        <div class="ring-label">${label}</div>
+        <div class="ring-sub">${sub}</div>
+      </div>
+    </div>
+  `;
+}
+
+function bar(label, count, pct, color){
+  return `
+    <div class="mini-bar-row">
+      <div class="mini-bar-label">${label}</div>
+      <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${pct}%; background:${color}"></div></div>
+      <div class="mini-bar-val">${count}</div>
+    </div>
+  `;
+}
+
+async function loadStats(){
+  try{
+    const res = await fetch('/api/stats');
+    const s = await res.json();
+
+    document.getElementById('stats-rings').innerHTML =
+      ring(s.eligible_rate, 'var(--ok)', 'Fee-Waiver Eligible', `${s.eligible_count} of ${s.total_customers} customers`) +
+      ring(s.flagged_rate, 'var(--danger)', 'Active Flags', `${s.flagged_count} of ${s.total_customers} customers`);
+
+    document.getElementById('risk-bars').innerHTML =
+      bar('Low', s.risk.low, s.risk.low_pct, 'var(--ok)') +
+      bar('Medium', s.risk.medium, s.risk.medium_pct, 'var(--warn)') +
+      bar('High', s.risk.high, s.risk.high_pct, 'var(--danger)');
+
+    document.getElementById('tier-bars').innerHTML =
+      bar('Platinum', s.tier.platinum, s.tier.platinum_pct, 'var(--accent)') +
+      bar('Gold', s.tier.gold, s.tier.gold_pct, 'var(--warn)') +
+      bar('Silver', s.tier.silver, s.tier.silver_pct, 'var(--text-dim)');
+  } catch(e) {
+    document.getElementById('stats-rings').innerHTML = '<div class="stats-empty">Could not load stats.</div>';
+  }
+}
+loadStats();
+</script>
+</body>
+</html>

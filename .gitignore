@@ -1,0 +1,38 @@
+# Environment variables -- NEVER commit real secrets
+.env
+.env.local
+*.env
+
+# Python
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Databases generated at runtime (not source data -- regenerate with data/generate_bulk_data.py)
+data/core_banking.db
+sap_service/data/accounts.csv
+sap_service/data/transactions.csv
+sap_service/data/flags.csv
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Node (if any frontend tooling gets added later)
+node_modules/

@@ -1,0 +1,11 @@
+---
+applications:
+  - name: sap-ap-service
+    memory: 256M
+    disk_quota: 512M
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: python main.py
+    env:
+      PYTHONUNBUFFERED: "true"
